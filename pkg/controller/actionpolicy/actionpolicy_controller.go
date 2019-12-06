@@ -17,6 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	
+	netv1 "k8s.io/api/networking/v1"
+//	"fmt"
 )
 
 var log = logf.Log.WithName("controller_actionpolicy")
@@ -85,7 +88,7 @@ type ReconcileActionPolicy struct {
 func (r *ReconcileActionPolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling ActionPolicy")
-
+	
 	// Fetch the ActionPolicy instance
 	instance := &actioncontrollerv1alpha1.ActionPolicy{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
@@ -100,23 +103,73 @@ func (r *ReconcileActionPolicy) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
-
-	// Set ActionPolicy instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
+	if (false) {
+		// Define a new Pod object
+		pod := newPodForCR(instance)
+	
+		// Set ActionPolicy instance as the owner and controller
+		if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
 			return reconcile.Result{}, err
 		}
+	
+		// Check if this Pod already exists
+		found := &corev1.Pod{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+		if err != nil && errors.IsNotFound(err) {
+			reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+			err = r.client.Create(context.TODO(), pod)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+	
+			// Pod created successfully - don't requeue
+			return reconcile.Result{}, nil
+		} else if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	var targetRuleName = "nginx.deny-egress"
+	
+
+//	netpo := &netv1.NetworkPolicy{
+//		ObjectMeta: metav1.ObjectMeta{
+//			Name:      "hoge",
+//			Namespace: request.Namespace,
+//		},
+//	}
+//	fmt.Println(netpo)
+
+	
+	// Check if this Pod already exists
+	found2 := &netv1.NetworkPolicy{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: targetRuleName, Namespace: instance.Namespace}, found2)
+	if err != nil && errors.IsNotFound(err) {
+		reqLogger.Info("Creating a new NetworkPolicy", "Pod.Namespace", instance.Namespace, "Pod.Name", targetRuleName)
+		
+		netpo := &netv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      targetRuleName,
+				Namespace: instance.Namespace,
+			},
+			Spec: netv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "nginx",
+					},
+				},
+				PolicyTypes: []netv1.PolicyType {
+					"Ingress",
+				},
+			},
+		}
+//		fmt.Println(netpo)
+		
+		err = r.client.Create(context.TODO(), netpo)
+//		if err != nil {
+//			reqLogger.Info("Error when create", err)
+//			return reconcile.Result{}, err
+//		}
 
 		// Pod created successfully - don't requeue
 		return reconcile.Result{}, nil
@@ -125,7 +178,7 @@ func (r *ReconcileActionPolicy) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", instance.Namespace, "Pod.Name", found2.Name)
 	return reconcile.Result{}, nil
 }
 
