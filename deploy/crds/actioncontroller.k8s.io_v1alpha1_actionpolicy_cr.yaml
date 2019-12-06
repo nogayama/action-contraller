@@ -1,0 +1,7 @@
+apiVersion: actioncontroller.k8s.io/v1alpha1
+kind: ActionPolicy
+metadata:
+  name: example-actionpolicy
+spec:
+  # Add fields here
+  size: 3
